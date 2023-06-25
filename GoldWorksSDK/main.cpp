@@ -1,74 +1,123 @@
 #include <iostream>
-#include <stdio.h>
 #include <fstream>
+#include <vector>
 #include <cstdint>
+#include <algorithm>
 
 using namespace std;
 
+// Structure representing the header of a GoldWorksShader file.
 struct ShaderHeader {
-	uint32_t version = 0; // version for compability, for now doesn't matter but it might come in handy distinguish versions
-	uint32_t vertexsize = 0; // size of vertex code
-	uint32_t fragmentsize = 0; // size of fragment code
-	uint32_t vertexlocation = 0; // location of vertex code
-	uint32_t fragmentlocation = 0; // location of fragment code
+    uint32_t version = 0;           // Version for compatibility
+    uint32_t vertexSize = 0;        // Size of the vertex code
+    uint32_t fragmentSize = 0;      // Size of the fragment code
+    uint32_t vertexLocation = 0;    // Location of the vertex code
+    uint32_t fragmentLocation = 0;  // Location of the fragment code
 };
-
-const char* itc(int value) { // takes an int and returns char, used for write opperations that require chars instead of ints
-	return reinterpret_cast<const char*>(&value);
-}
 
 int main(int argc, char* argv[]) {
 
-	if (argc < 3 || argc > 4) {
-		cout << "Invalid Arguments" << endl
-			<< "Format: GWShaderMaker.exe <compiled vertex shader file> <compiled fragment shader file> <output file>(optional)";
-		return 1;
-	}
+    // Check command-line arguments
+    if (argc < 3 || argc > 4) {
+        cout << "Invalid Arguments" << endl
+            << "Format: GWShaderMaker.exe <compiled vertex shader file> <compiled fragment shader file> <output file>(optional)";
+        return 1;
+    }
 
-	string name;
+    string name; // Name of the file
 
-	if (argc == 3) {
-		name = "shader.gws"; // default name
-	}
-	else if (argc == 4) {
-		name = argv[3];
-		name.erase(remove(name.begin(), name.end(), '"'), name.end()); // remove ""
-	}
+    // Set the output file name
+    if (argc == 3) {
+        name = "shader.gws"; // Default name
+    }
+    else if (argc == 4) {
+        name = argv[3];
+        name.erase(remove(name.begin(), name.end(), '"'), name.end()); // Remove double quotes
+    }
 
-	fstream shaders[2]; // vertex and fragment shader code
+    vector<char> vertexCode;   // Vector representing the Vertex Shader code
+    vector<char> fragmentCode; // Vector representing the Fragment Shader code
 
-	shaders[0].open(argv[1], ios::in | ios::binary | ios::ate); // open vertex file
+    // Read Vertex Shader code
+    ifstream vertexShaderFile(argv[1], ios::binary | ios::ate);
 
-	shaders[1].open(argv[2], ios::in | ios::binary | ios::ate); //open fragment file
+    if (!vertexShaderFile.is_open()) {
+        cout << "Failed to open vertex shader file." << endl;
+        return 1;
+    }
 
-	fstream output(name, ios::in | ios::out | ios::trunc); // create output file
+    // Get the Vertex Code Size
+    size_t vertexSize = vertexShaderFile.tellg();
 
-	ShaderHeader buffer; // structure of GoldWorksShader file
+    // Resize Vector to fit Vertex Shader Code
+    vertexCode.resize(vertexSize);
 
-	buffer.vertexsize = shaders[0].tellp(); // get size of vertex code
-	buffer.fragmentsize = shaders[1].tellp(); // get size of fragment code
+    // Go to beggining of file
+    vertexShaderFile.seekg(0, ios::beg);
 
-	buffer.vertexlocation = 4 * 5; // all 5 header variables are 4 bytes, and the vertex code comes immediately after the header,
-	// so 4 bytes * 5 variables
+    // Copy contents to Vector
+    vertexShaderFile.read(vertexCode.data(), vertexSize);
 
-	buffer.fragmentlocation = buffer.vertexlocation + buffer.vertexsize; // fragment code comes immediately after vertex code,
-	// so we go to the location of the vertex code wich we already know and skip the vertex code since we know the size of it
+    // Close File
+    vertexShaderFile.close();
 
-	// write header
-	output.write(itc(buffer.version), 4);
-	output.write(itc(buffer.vertexsize), 4);
-	output.write(itc(buffer.fragmentsize), 4);
-	output.write(itc(buffer.vertexlocation), 4);
-	output.write(itc(buffer.fragmentlocation), 4);
+    // Do the same for Fragment Shader
+    ifstream fragmentShaderFile(argv[2], ios::binary | ios::ate);
 
-	// write the shader code
-	output << shaders[0].rdbuf();
-	output << shaders[1].rdbuf();
-	
-	// don't forget to close the files
-	shaders[0].close();
-	shaders[1].close();
-	output.close();
+    if (!fragmentShaderFile.is_open()) {
+        cout << "Failed to open fragment shader file." << endl;
+        return 1;
+    }
 
-	return 0; // finish
+    
+    size_t fragmentSize = fragmentShaderFile.tellg();
+
+    fragmentCode.resize(fragmentSize);
+
+    fragmentShaderFile.seekg(0, ios::beg);
+
+    fragmentShaderFile.read(fragmentCode.data(), fragmentSize);
+
+    fragmentShaderFile.close();
+
+    
+
+    ShaderHeader buffer; // Structure of GoldWorksShader file
+
+
+    // Set info that we already gathered
+
+    // Set sizes
+    buffer.vertexSize = static_cast<uint32_t>(vertexSize);
+    buffer.fragmentSize = static_cast<uint32_t>(fragmentSize);
+
+    // Set locations
+    buffer.vertexLocation = sizeof(ShaderHeader);
+    buffer.fragmentLocation = buffer.vertexLocation + buffer.vertexSize;
+
+
+
+    // Create output file
+    ofstream outputFile(name, ios::binary | ios::trunc);
+
+    if (!outputFile.is_open()) {
+        cout << "Failed to create/open output file." << endl;
+        return 1;
+    }
+
+    // Write Header
+    outputFile.write(reinterpret_cast<const char*>(&buffer), sizeof(ShaderHeader));
+
+    // Write the Shader code
+    outputFile.write(vertexCode.data(), vertexCode.size());
+    outputFile.write(fragmentCode.data(), fragmentCode.size());
+
+    // Close the file
+    outputFile.close();
+
+    cout << "Output file created successfully: " << name << endl;
+
+    return 0; // finish
 }
+
+// The End
